@@ -1,6 +1,7 @@
 import time
 import requests
 from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -12,22 +13,31 @@ from webdriver_manager.chrome import ChromeDriverManager
 # ✅ Discord Webhook
 WEBHOOK_URL = "https://discord.com/api/webhooks/1390577349489328179/t_7-as4-tdDVt0QddU7g9qVDeZEHY1eWzOcicIX4zWJD0MRtFOIoBL2czjxJFEO_X_Gg"
 
-# ✅ ログイン情報（仮予約時に使用）
+# ✅ ログイン情報
 LOGIN_EMAIL = "tasuku765@gmail.com"
 LOGIN_PASSWORD = "syk3bzdsg"
 
-# ✅ 空室検出対象のキーワード（部屋名に含まれていれば通知・仮予約する）
-target_keywords = [
-    "パーシャルビュー",
-    "ピアッツァビュー",
-    "ハーバービュー",
-    "ピアッツァグランドビュー",
-    "ハーバーグランドビュー",
-    "ハーバーテラスルーム",
-    "バルコニールーム"
+# ✅ 正式名称で完全一致する部屋名
+target_room_names = [
+    # テラスルーム
+    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバービュー",
+    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバーグランドビュー",
+
+    # バルコニールーム
+    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ピアッツァビュー",
+    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ハーバービュー",
+
+    # スーペリアルーム
+    "ポルト・パラディーゾ・サイド スーペリアルーム パーシャルビュー",
+    "ポルト・パラディーゾ・サイド スーペリアルーム ピアッツァビュー",
+    "ポルト・パラディーゾ・サイド スーペリアルーム ピアッツァビュー（4名対応）",
+    "ポルト・パラディーゾ・サイド スーペリアルーム ピアッツァグランドビュー",
+    "ポルト・パラディーゾ・サイド スーペリアルーム ピアッツァグランドビュー（4名対応）",
+    "ポルト・パラディーゾ・サイド スーペリアルーム ハーバービュー",
+    "ポルト・パラディーゾ・サイド スーペリアルーム ハーバービュー（4名対応）"
 ]
 
-# ✅ 対象URL（ホテルから探す・カレンダー形式）
+# ✅ 対象URL
 TARGET_URL = "https://reserve.tokyodisneyresort.jp/sp/hotel/list/?showWay=&roomsNum=&adultNum=2&childNum=&stayingDays=1&useDate=&cpListStr=&childAgeBedInform=&searchHotelCD=DHM&searchHotelDiv=&hotelName=&searchHotelName=&searchLayer=&searchRoomName=&hotelSearchDetail=true&detailOpenFlg=0&checkPointStr=&hotelChangeFlg=false&removeSessionFlg=true&returnFlg=false&hotelShowFlg=&displayType=hotel-search&reservationStatus=1"
 
 # ✅ Discord通知
@@ -38,7 +48,7 @@ def notify_discord(message):
     except Exception as e:
         print(f"通知失敗: {e}")
 
-# ✅ 待合室突破処理
+# ✅ 待合室突破
 def wait_for_waiting_room(driver):
     while True:
         if "アクセスが集中しています" in driver.page_source:
@@ -49,7 +59,7 @@ def wait_for_waiting_room(driver):
             print("待合室を突破しました")
             break
 
-# ✅ 仮予約処理（クレカ入力手前まで）
+# ✅ ログイン・仮予約処理
 def login_and_reserve(driver):
     try:
         print("ログイン処理開始")
@@ -85,8 +95,8 @@ def login_and_reserve(driver):
 def check_rooms(driver):
     driver.get(TARGET_URL)
     soup = BeautifulSoup(driver.page_source, "html.parser")
-
     rooms = soup.find_all("div", class_="roomList")
+
     for room in rooms:
         room_name_elem = room.find("span", class_="roomName")
         status_marks = room.find_all("span", class_="statusMark")
@@ -97,15 +107,21 @@ def check_rooms(driver):
         room_name = room_name_elem.get_text(strip=True)
         status_texts = [s.get_text(strip=True) for s in status_marks]
 
-        for keyword in target_keywords:
-            if keyword in room_name:
-                for date_index, status in enumerate(status_texts):
-                    if status in ["○", "1", "2", "3"]:
-                        msg = f"{room_name} に空きあり：{status}（{date_index+1}日目付近）\n{TARGET_URL}"
-                        print(msg)
-                        notify_discord(msg)
-                        login_and_reserve(driver)
-                        return  # 1件見つけたら終了
+        if room_name in target_room_names:
+            for date_index, status in enumerate(status_texts):
+                if status in ["○", "1", "2", "3"]:
+                    stay_date = (datetime.now() + timedelta(days=date_index)).strftime("%Y-%m-%d")
+                    msg = (
+                        f"宿泊日：{stay_date}\n"
+                        f"部屋名：{room_name}\n"
+                        f"空室状況：{status}\n"
+                        f"通知時刻：{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}\n"
+                        f"予約ページ：{TARGET_URL}"
+                    )
+                    print(msg)
+                    notify_discord(msg)
+                    login_and_reserve(driver)
+                    return  # 1件見つけたら終了
 
 # ✅ メイン処理
 def main():
