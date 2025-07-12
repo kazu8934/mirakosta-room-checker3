@@ -10,13 +10,17 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
+# ✅ あなたのディズニーアカウント
+EMAIL = "tasuku765@gmail.com"
+PASSWORD = "syk3bzdsg"
+
 # ✅ Discord通知用Webhook URL
 WEBHOOK_URL = "https://discord.com/api/webhooks/1390577349489328179/t_7-as4-tdDVt0QddU7g9qVDeZEHY1eWzOcicIX4zWJD0MRtFOIoBL2czjxJFEO_X_Gg"
 
-# ✅ チェック対象のURL（ホテルから探すルート）
+# ✅ チェック対象URL（ホテルから探す）
 LIST_URL = "https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search"
 
-# ✅ 対象部屋（正式名称ベースでフィルタ）
+# ✅ 対象部屋の正式名称リスト
 target_rooms = [
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバーグランドビュー",
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバービュー",
@@ -28,16 +32,62 @@ target_rooms = [
     "ポルト・パラディーゾ・サイド スーペリアルーム ハーバービュー",
 ]
 
-# ✅ 通知送信関数
-def notify_discord(date, room_name, status, link):
+# ✅ Discord通知関数
+def notify_discord(date, room_name, status):
     message = (
         f"【ミラコスタ空室検知】\n"
         f"日付：{date}\n"
-        f"部屋タイプ：\n{room_name}\n"
-        f"空室数：{status}\n"
-        f"[予約ページを開く]({link})"
+        f"部屋タイプ：{room_name}\n"
+        f"空室状態：{status}\n"
+        f"[予約ページを開く](https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search)"
     )
     requests.post(WEBHOOK_URL, json={"content": message})
+
+# ✅ 仮予約ページまで自動遷移
+def go_to_reservation(driver, reserve_link):
+    try:
+        # ログインページへ
+        driver.get("https://reserve.tokyodisneyresort.jp/login/")
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "form_login_id")))
+
+        driver.find_element(By.ID, "form_login_id").send_keys(EMAIL)
+        driver.find_element(By.ID, "form_login_pass").send_keys(PASSWORD)
+        driver.find_element(By.ID, "loginSubmit").click()
+        time.sleep(5)
+
+        # 同意ボタンがある場合処理
+        try:
+            agree_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.CLASS_NAME, "btnAgree"))
+            )
+            agree_button.click()
+        except:
+            pass
+
+        # 対象の部屋ページへアクセス
+        driver.get(reserve_link)
+        time.sleep(3)
+
+        # 「次へ」ボタンがある場合クリック
+        try:
+            next_btn = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CLASS_NAME, "btnNext"))
+            )
+            next_btn.click()
+            time.sleep(2)
+        except:
+            print("次へボタンなし")
+
+        # 人数選択（大人2人）
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "adultNum")))
+        driver.find_element(By.ID, "adultNum").send_keys("2")
+        driver.find_element(By.CLASS_NAME, "btnNext").click()
+        time.sleep(5)
+
+        print("[OK] 仮予約画面に到達しました")
+
+    except Exception as e:
+        print(f"[ERROR] 仮予約処理エラー: {e}")
 
 # ✅ 空室チェック処理
 def check_rooms():
@@ -54,40 +104,44 @@ def check_rooms():
     rooms = soup.find_all("div", class_="planListItem")
 
     for room in rooms:
-        room_name_tag = room.find("div", class_="roomType")
-        if not room_name_tag:
+        name_tag = room.find("div", class_="roomType")
+        if not name_tag:
             continue
-        room_name = room_name_tag.get_text(strip=True)
+        room_name = name_tag.get_text(strip=True)
 
-        # ✅ 対象部屋かどうか
-        if not any(target in room_name for target in target_rooms):
+        # 対象部屋かどうか
+        if not any(name in room_name for name in target_rooms):
             continue
 
-        # ✅ カレンダービューがあるか確認
         calendar = room.find("div", class_="statusMarkArea")
         if not calendar:
             continue
 
-        status_marks = calendar.find_all("span", class_="statusMark")
-        date_texts = calendar.find_all("span", class_="date")
+        marks = calendar.find_all("span", class_="statusMark")
+        dates = calendar.find_all("span", class_="date")
 
-        for i, status in enumerate(status_marks):
-            mark = status.get_text(strip=True)
+        # 予約リンクを抽出（部屋ごとのリンク）
+        link_tag = room.find("a", class_="planDetailBtn")
+        if not link_tag:
+            continue
+        reserve_link = "https://reserve.tokyodisneyresort.jp" + link_tag["href"]
 
-            # ✅ 通知対象（○・1〜3・または金額表示）
-            if mark == "○" or mark in ["1", "2", "3"] or mark.startswith("¥"):
+        for i, mark in enumerate(marks):
+            status = mark.get_text(strip=True)
+            if status in ["○", "1", "2", "3"] or status.startswith("¥"):
                 try:
-                    date_text = date_texts[i].get_text(strip=True)
-                    notify_discord(date_text, room_name, mark, LIST_URL)
+                    date_text = dates[i].get_text(strip=True)
+                    notify_discord(date_text, room_name, status)
+                    go_to_reservation(driver, reserve_link)
                 except IndexError:
                     continue
 
     driver.quit()
 
-# ✅ メインループ（2分おきに実行）
+# ✅ メインループ：2分おきに巡回
 while True:
     try:
         check_rooms()
     except Exception as e:
-        print(f"[ERROR] メインループ：{e}")
-    time.sleep(120)  # 2分おき
+        print(f"[ERROR] メインループ: {e}")
+    time.sleep(120)
