@@ -17,7 +17,7 @@ WEBHOOK_URL = "https://discord.com/api/webhooks/1390577349489328179/t_7-as4-tdDV
 LOGIN_EMAIL = "tasuku765@gmail.com"
 LOGIN_PASSWORD = "syk3bzdsg"
 
-# ✅ 対象部屋名
+# ✅ 空室検出対象のキーワード
 target_keywords = [
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバービュー",
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバーグランドビュー",
@@ -29,9 +29,10 @@ target_keywords = [
     "ポルト・パラディーゾ・サイド スーペリアルーム ハーバービュー"
 ]
 
+# ✅ 対象URL（部屋一覧表示）
 LIST_URL = "https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search"
 
-
+# ✅ Discord通知関数
 def notify_discord(message):
     data = {"content": message}
     try:
@@ -39,19 +40,36 @@ def notify_discord(message):
     except Exception as e:
         print(f"通知失敗: {e}")
 
+# ✅ 仮予約処理（クレカ直前まで）
+def login_and_reserve(driver):
+    try:
+        driver.get("https://reserve.tokyodisneyresort.jp/login/")
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "loginId")))
+        driver.find_element(By.ID, "loginId").send_keys(LOGIN_EMAIL)
+        driver.find_element(By.ID, "password").send_keys(LOGIN_PASSWORD)
+        driver.find_element(By.CLASS_NAME, "btnLogin").click()
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "headerLogo")))
+        print("ログイン成功")
+    except Exception as e:
+        print(f"ログイン処理失敗: {e}")
 
-def login(driver):
-    driver.get("https://reserve.tokyodisneyresort.jp/login/")
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "loginId")))
-    driver.find_element(By.ID, "loginId").send_keys(LOGIN_EMAIL)
-    driver.find_element(By.ID, "password").send_keys(LOGIN_PASSWORD)
-    driver.find_element(By.CLASS_NAME, "btnLogin").click()
-    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "headerLogo")))
+# ✅ 詳細ページから仮予約ページへ遷移
 
+def go_to_reservation_entry(driver):
+    try:
+        # チェックを入れて「次へ」ボタンを押す
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.NAME, "agreeCheck")))
+        driver.find_element(By.NAME, "agreeCheck").click()
+        driver.find_element(By.CLASS_NAME, "btnNext" ).click()
+        notify_discord("予約画面に遷移完了（クレカ直前）")
+    except Exception as e:
+        print(f"予約ページ遷移失敗: {e}")
 
-def check_calendar_and_reserve(driver):
+# ✅ カレンダービューへ遷移し空室をチェック
+def check_calendar(driver):
     driver.get(LIST_URL)
     time.sleep(3)
+
     room_links = driver.find_elements(By.XPATH, "//div[contains(@class, 'roomList')]/div[@class='roomInfo']/div[@class='roomName']/a")
 
     for link in room_links:
@@ -74,21 +92,17 @@ def check_calendar_and_reserve(driver):
                             f"確認時刻: {datetime.now().strftime('%Y/%m/%d %H:%M')}\n"
                             f"https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search"
                         )
+                        print(msg)
                         notify_discord(msg)
-
-                        # ✅ 詳細ページ → 同意チェック → 次へ
-                        agree = driver.find_element(By.ID, "agreeCheck")
-                        agree.click()
-                        driver.find_element(By.XPATH, "//a[contains(@class, 'next')]" ).click()
-                        print("仮予約画面へ遷移成功")
+                        login_and_reserve(driver)
+                        go_to_reservation_entry(driver)
                         return
-
                 driver.back()
                 time.sleep(2)
             except Exception as e:
-                print(f"詳細ページ遷移失敗: {e}")
+                print(f"カレンダー遷移失敗: {e}")
 
-
+# ✅ メイン処理
 def main():
     options = Options()
     options.add_argument("--headless")
@@ -96,14 +110,15 @@ def main():
     options.add_argument("--disable-dev-shm-usage")
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-    login(driver)
-
     while True:
         try:
-            check_calendar_and_reserve(driver)
+            check_calendar(driver)
         except Exception as e:
-            print(f"エラー: {e}")
+            print(f"空室チェック中にエラー: {e}")
         time.sleep(120)
+
+if __name__ == "__main__":
+    main()
 
 
 if __name__ == "__main__":
