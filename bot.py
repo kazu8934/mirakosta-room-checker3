@@ -46,15 +46,14 @@ def notify_discord(date, room_name, status, reserve_link):
 # ✅ 仮予約ページへ自動遷移
 def go_to_reservation(driver, reserve_link):
     try:
-        # ログイン
         driver.get("https://reserve.tokyodisneyresort.jp/login/")
         WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "form_login_id")))
+
         driver.find_element(By.ID, "form_login_id").send_keys(EMAIL)
         driver.find_element(By.ID, "form_login_pass").send_keys(PASSWORD)
         driver.find_element(By.ID, "loginSubmit").click()
         time.sleep(5)
 
-        # 同意ボタン処理
         try:
             agree_button = WebDriverWait(driver, 5).until(
                 EC.element_to_be_clickable((By.CLASS_NAME, "btnAgree"))
@@ -63,11 +62,9 @@ def go_to_reservation(driver, reserve_link):
         except:
             pass
 
-        # 対象部屋ページへ
         driver.get(reserve_link)
         time.sleep(3)
 
-        # 「次へ」クリック
         try:
             next_btn = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.CLASS_NAME, "btnNext"))
@@ -77,7 +74,6 @@ def go_to_reservation(driver, reserve_link):
         except:
             print("次へボタンなし")
 
-        # 人数選択（大人2人）
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "adultNum")))
         driver.find_element(By.ID, "adultNum").send_keys("2")
         driver.find_element(By.CLASS_NAME, "btnNext").click()
@@ -99,7 +95,6 @@ def check_rooms():
     driver.get(LIST_URL)
     time.sleep(5)
     soup = BeautifulSoup(driver.page_source, 'html.parser')
-
     rooms = soup.find_all("div", class_="planListItem")
 
     for room in rooms:
@@ -108,7 +103,6 @@ def check_rooms():
             continue
         room_name = name_tag.get_text(strip=True)
 
-        # 対象の部屋か？
         if not any(name in room_name for name in target_rooms):
             continue
 
@@ -118,8 +112,6 @@ def check_rooms():
 
         marks = calendar.find_all("span", class_="statusMark")
         dates = calendar.find_all("span", class_="date")
-
-        # 個別の予約リンク取得
         link_tag = room.find("a", class_="planDetailBtn")
         if not link_tag:
             continue
@@ -144,4 +136,5 @@ while True:
     except Exception as e:
         print(f"[ERROR] メインループ: {e}")
     time.sleep(120)
+
 
