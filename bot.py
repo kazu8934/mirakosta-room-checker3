@@ -32,30 +32,29 @@ target_rooms = [
     "ポルト・パラディーゾ・サイド スーペリアルーム ハーバービュー",
 ]
 
-# ✅ Discord通知関数
-def notify_discord(date, room_name, status):
+# ✅ Discord通知関数（個別リンク付き）
+def notify_discord(date, room_name, status, reserve_link):
     message = (
         f"【ミラコスタ空室検知】\n"
         f"日付：{date}\n"
         f"部屋タイプ：{room_name}\n"
         f"空室状態：{status}\n"
-        f"[予約ページを開く](https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search)"
+        f"[予約ページを開く]({reserve_link})"
     )
     requests.post(WEBHOOK_URL, json={"content": message})
 
-# ✅ 仮予約ページまで自動遷移
+# ✅ 仮予約ページへ自動遷移
 def go_to_reservation(driver, reserve_link):
     try:
-        # ログインページへ
+        # ログイン
         driver.get("https://reserve.tokyodisneyresort.jp/login/")
         WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "form_login_id")))
-
         driver.find_element(By.ID, "form_login_id").send_keys(EMAIL)
         driver.find_element(By.ID, "form_login_pass").send_keys(PASSWORD)
         driver.find_element(By.ID, "loginSubmit").click()
         time.sleep(5)
 
-        # 同意ボタンがある場合処理
+        # 同意ボタン処理
         try:
             agree_button = WebDriverWait(driver, 5).until(
                 EC.element_to_be_clickable((By.CLASS_NAME, "btnAgree"))
@@ -64,11 +63,11 @@ def go_to_reservation(driver, reserve_link):
         except:
             pass
 
-        # 対象の部屋ページへアクセス
+        # 対象部屋ページへ
         driver.get(reserve_link)
         time.sleep(3)
 
-        # 「次へ」ボタンがある場合クリック
+        # 「次へ」クリック
         try:
             next_btn = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.CLASS_NAME, "btnNext"))
@@ -89,7 +88,7 @@ def go_to_reservation(driver, reserve_link):
     except Exception as e:
         print(f"[ERROR] 仮予約処理エラー: {e}")
 
-# ✅ 空室チェック処理
+# ✅ 空室チェック関数
 def check_rooms():
     options = Options()
     options.add_argument('--headless')
@@ -109,7 +108,7 @@ def check_rooms():
             continue
         room_name = name_tag.get_text(strip=True)
 
-        # 対象部屋かどうか
+        # 対象の部屋か？
         if not any(name in room_name for name in target_rooms):
             continue
 
@@ -120,7 +119,7 @@ def check_rooms():
         marks = calendar.find_all("span", class_="statusMark")
         dates = calendar.find_all("span", class_="date")
 
-        # 予約リンクを抽出（部屋ごとのリンク）
+        # 個別の予約リンク取得
         link_tag = room.find("a", class_="planDetailBtn")
         if not link_tag:
             continue
@@ -131,17 +130,18 @@ def check_rooms():
             if status in ["○", "1", "2", "3"] or status.startswith("¥"):
                 try:
                     date_text = dates[i].get_text(strip=True)
-                    notify_discord(date_text, room_name, status)
+                    notify_discord(date_text, room_name, status, reserve_link)
                     go_to_reservation(driver, reserve_link)
                 except IndexError:
                     continue
 
     driver.quit()
 
-# ✅ メインループ：2分おきに巡回
+# ✅ メインループ（2分おき）
 while True:
     try:
         check_rooms()
     except Exception as e:
         print(f"[ERROR] メインループ: {e}")
     time.sleep(120)
+
