@@ -23,7 +23,7 @@ TARGET_ROOMS = [
     "ポルト・パラディーゾ・サイド スーペリアルーム パーシャルビュー"
 ]
 
-# ✅ 対象URL（ホテルから探す）
+# ✅ 対象URL
 LIST_URL = "https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search"
 
 # ✅ ログイン情報
@@ -38,18 +38,16 @@ options.add_argument("--disable-dev-shm-usage")
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 driver.set_page_load_timeout(90)
 
-# ✅ Discord通知関数（整形版）
 def notify_discord(date, room_name, status, link):
     message = (
         f"【ミラコスタ空室検知】\n"
-        f"📅 日付：{date}\n"
-        f"🏨 部屋タイプ：\n{room_name}\n"
-        f"🛏 空室数：{status}\n"
-        f"👉 [予約ページはこちら]({link})"
+        f"日付：{date}\n"
+        f"部屋タイプ：{room_name}\n"
+        f"空室状況：{status}\n"
+        f"予約ページはこちら：{link}"
     )
     requests.post(WEBHOOK_URL, json={"content": message})
 
-# ✅ 空室チェック関数
 def check_rooms():
     driver.get(LIST_URL)
     time.sleep(5)
@@ -57,9 +55,11 @@ def check_rooms():
     room_blocks = soup.find_all("div", class_="roomList")
 
     for room_block in room_blocks:
-        room_name = room_block.find("p", class_="roomName").text.strip()
+        room_name_tag = room_block.find("p", class_="roomName")
+        if not room_name_tag:
+            continue
+        room_name = room_name_tag.text.strip()
 
-        # 対象の部屋名かチェック
         if any(target in room_name for target in TARGET_ROOMS):
             spans = room_block.find_all("span", class_="statusMark")
             days = room_block.find_all("span", class_="dayNum")
@@ -68,42 +68,40 @@ def check_rooms():
                 status = span.text.strip()
                 date_text = day.text.strip()
 
-                if status in ["○", "1", "2", "3"] and date_text.isdigit():
-                    # 日付取得＆リンク作成
-                    today = datetime.today()
-                    target_day = int(date_text)
-                    target_date = today.replace(day=1) + timedelta(days=(target_day - 1))
-                    formatted_date = target_date.strftime("%Y-%m-%d")
-
+                # ✅ ○・数字・価格（円）を空室とみなす
+                if status in ["○", "1", "2", "3"] or "円" in status:
                     link = "https://reserve.tokyodisneyresort.jp" + room_block.find("a")["href"]
 
-                    # 仮予約ページへ遷移し確認
                     try:
+                        # 仮予約処理
                         driver.get(link)
                         time.sleep(2)
 
+                        # 同意画面
                         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "form__agree")))
                         driver.find_element(By.ID, "form__agree").click()
                         driver.find_element(By.CLASS_NAME, "btnSubmit").click()
                         time.sleep(2)
 
+                        # ログイン画面
                         driver.find_element(By.ID, "form__login_id").send_keys(EMAIL)
                         driver.find_element(By.ID, "form__password").send_keys(PASSWORD)
                         driver.find_element(By.ID, "loginSubmit").click()
                         time.sleep(5)
 
                         if "purchase/entry/new" in driver.current_url:
-                            notify_discord(formatted_date, room_name, status, driver.current_url)
+                            notify_discord(date_text, room_name, status, driver.current_url)
 
                     except Exception as e:
-                        print(f"[ERROR] 仮予約遷移失敗: {e}")
+                        print(f"[ERROR] 仮予約処理エラー: {e}")
 
-##################
+####################
 ### 🔁 メインループ ###
-##################
+####################
 while True:
     try:
         check_rooms()
     except Exception as e:
         print(f"[ERROR] メインループ: {e}")
     time.sleep(120)  # ← 2分おきにチェック
+
