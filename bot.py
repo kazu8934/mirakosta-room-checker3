@@ -38,15 +38,18 @@ options.add_argument("--disable-dev-shm-usage")
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 driver.set_page_load_timeout(90)
 
-def notify_discord(date, room_name, link):
+# ✅ Discord通知関数（整形版）
+def notify_discord(date, room_name, status, link):
     message = (
         f"【ミラコスタ空室検知】\n"
-        f"日付：{date}\n"
-        f"部屋タイプ：{room_name}\n"
+        f"📅 日付：{date}\n"
+        f"🏨 部屋タイプ：\n{room_name}\n"
+        f"🛏 空室数：{status}\n"
         f"👉 [予約ページはこちら]({link})"
     )
     requests.post(WEBHOOK_URL, json={"content": message})
 
+# ✅ 空室チェック関数
 def check_rooms():
     driver.get(LIST_URL)
     time.sleep(5)
@@ -56,9 +59,8 @@ def check_rooms():
     for room_block in room_blocks:
         room_name = room_block.find("p", class_="roomName").text.strip()
 
-        # 対象の部屋名に含まれるか確認
+        # 対象の部屋名かチェック
         if any(target in room_name for target in TARGET_ROOMS):
-            # カレンダー形式の日付＆空室情報を取得
             spans = room_block.find_all("span", class_="statusMark")
             days = room_block.find_all("span", class_="dayNum")
 
@@ -66,32 +68,35 @@ def check_rooms():
                 status = span.text.strip()
                 date_text = day.text.strip()
 
-                if status in ["○", "1", "2", "3"]:
+                if status in ["○", "1", "2", "3"] and date_text.isdigit():
+                    # 日付取得＆リンク作成
+                    today = datetime.today()
+                    target_day = int(date_text)
+                    target_date = today.replace(day=1) + timedelta(days=(target_day - 1))
+                    formatted_date = target_date.strftime("%Y-%m-%d")
+
                     link = "https://reserve.tokyodisneyresort.jp" + room_block.find("a")["href"]
 
-                    # 仮予約画面まで進めるか確認
+                    # 仮予約ページへ遷移し確認
                     try:
                         driver.get(link)
                         time.sleep(2)
 
-                        # 同意画面
                         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "form__agree")))
                         driver.find_element(By.ID, "form__agree").click()
                         driver.find_element(By.CLASS_NAME, "btnSubmit").click()
                         time.sleep(2)
 
-                        # ログイン画面
                         driver.find_element(By.ID, "form__login_id").send_keys(EMAIL)
                         driver.find_element(By.ID, "form__password").send_keys(PASSWORD)
                         driver.find_element(By.ID, "loginSubmit").click()
                         time.sleep(5)
 
-                        # 仮予約ページに進めたか判定
                         if "purchase/entry/new" in driver.current_url:
-                            notify_discord(date_text, room_name, driver.current_url)
+                            notify_discord(formatted_date, room_name, status, driver.current_url)
 
                     except Exception as e:
-                        print(f"[ERROR] 仮予約画面への遷移失敗: {e}")
+                        print(f"[ERROR] 仮予約遷移失敗: {e}")
 
 ##################
 ### 🔁 メインループ ###
