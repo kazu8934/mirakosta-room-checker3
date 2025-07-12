@@ -1,144 +1,82 @@
 import time
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-# ✅ Discord Webhook
+# ✅ Discord通知用Webhook URL
 WEBHOOK_URL = "https://discord.com/api/webhooks/1390577349489328179/t_7-as4-tdDVt0QddU7g9qVDeZEHY1eWzOcicIX4zWJD0MRtFOIoBL2czjxJFEO_X_Gg"
 
-# ✅ ログイン情報
-LOGIN_EMAIL = "tasuku765@gmail.com"
-LOGIN_PASSWORD = "syk3bzdsg"
-
-# ✅ 正式名称で完全一致する部屋名
-target_room_names = [
-    # テラスルーム
+# ✅ チェック対象の正式部屋名称（完全一致）
+target_rooms = [
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバービュー",
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバーグランドビュー",
-
-    # バルコニールーム
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ピアッツァビュー",
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ハーバービュー",
-
-    # スーペリアルーム
-    "ポルト・パラディーゾ・サイド スーペリアルーム パーシャルビュー",
     "ポルト・パラディーゾ・サイド スーペリアルーム ピアッツァビュー",
-    "ポルト・パラディーゾ・サイド スーペリアルーム ピアッツァビュー（4名対応）",
-    "ポルト・パラディーゾ・サイド スーペリアルーム ピアッツァグランドビュー",
-    "ポルト・パラディーゾ・サイド スーペリアルーム ピアッツァグランドビュー（4名対応）",
-    "ポルト・パラディーゾ・サイド スーペリアルーム ハーバービュー",
-    "ポルト・パラディーゾ・サイド スーペリアルーム ハーバービュー（4名対応）"
+    "ポルト・パラディーゾ・サイド スーペリアルーム パーシャルビュー",
+    "ポルト・パラディーゾ・サイド スーペリアルーム ハーバービュー"
 ]
 
-# ✅ 対象URL
-TARGET_URL = "https://reserve.tokyodisneyresort.jp/sp/hotel/list/?showWay=&roomsNum=&adultNum=2&childNum=&stayingDays=1&useDate=&cpListStr=&childAgeBedInform=&searchHotelCD=DHM&searchHotelDiv=&hotelName=&searchHotelName=&searchLayer=&searchRoomName=&hotelSearchDetail=true&detailOpenFlg=0&checkPointStr=&hotelChangeFlg=false&removeSessionFlg=true&returnFlg=false&hotelShowFlg=&displayType=hotel-search&reservationStatus=1"
-
-# ✅ Discord通知
-def notify_discord(message):
-    data = {"content": message}
+# ✅ Discord通知関数
+def notify_discord(date_str, room_name, status):
+    message = (
+        f"【ミラコスタ空室検知】\n"
+        f"日付：{date_str}\n"
+        f"部屋タイプ：{room_name}\n"
+        f"空室状態：{status}\n"
+        f"[👉 予約ページはこちら](https://reserve.tokyodisneyresort.jp/sp/hotel/list/)"
+    )
     try:
-        requests.post(WEBHOOK_URL, json=data)
+        requests.post(WEBHOOK_URL, json={"content": message})
+        print(f"✅ 通知済：{room_name} {date_str} {status}")
     except Exception as e:
-        print(f"通知失敗: {e}")
-
-# ✅ 待合室突破
-def wait_for_waiting_room(driver):
-    while True:
-        if "アクセスが集中しています" in driver.page_source:
-            print("待合室に滞在中...リロードで待機")
-            time.sleep(10)
-            driver.refresh()
-        else:
-            print("待合室を突破しました")
-            break
-
-# ✅ ログイン・仮予約処理
-def login_and_reserve(driver):
-    try:
-        print("ログイン処理開始")
-        driver.get("https://reserve.tokyodisneyresort.jp/login/")
-        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "loginId")))
-        driver.find_element(By.ID, "loginId").send_keys(LOGIN_EMAIL)
-        driver.find_element(By.ID, "password").send_keys(LOGIN_PASSWORD)
-        driver.find_element(By.CLASS_NAME, "btnLogin").click()
-
-        wait_for_waiting_room(driver)
-
-        print("ログイン完了 → 再遷移")
-        driver.get(TARGET_URL)
-        time.sleep(3)
-
-        try:
-            adult_select = Select(driver.find_element(By.NAME, "adultNum"))
-            adult_select.select_by_value("2")
-        except:
-            print("人数選択失敗")
-
-        try:
-            driver.find_element(By.CLASS_NAME, "btnNext").click()
-            print("仮予約ページへ遷移成功")
-            notify_discord("仮予約ページに進みました（クレカ手前）")
-        except:
-            print("仮予約ページ遷移失敗")
-
-    except Exception as e:
-        print(f"ログインまたは仮予約処理でエラー: {e}")
+        print(f"❌ 通知失敗: {e}")
 
 # ✅ 空室チェック本体
-def check_rooms(driver):
-    driver.get(TARGET_URL)
-    soup = BeautifulSoup(driver.page_source, "html.parser")
-    rooms = soup.find_all("div", class_="roomList")
-
-    for room in rooms:
-        room_name_elem = room.find("span", class_="roomName")
-        status_marks = room.find_all("span", class_="statusMark")
-
-        if not room_name_elem or not status_marks:
-            continue
-
-        room_name = room_name_elem.get_text(strip=True)
-        status_texts = [s.get_text(strip=True) for s in status_marks]
-
-        if room_name in target_room_names:
-            for date_index, status in enumerate(status_texts):
-                if status in ["○", "1", "2", "3"]:
-                    stay_date = (datetime.now() + timedelta(days=date_index)).strftime("%Y-%m-%d")
-                    msg = (
-                        f"宿泊日：{stay_date}\n"
-                        f"部屋名：{room_name}\n"
-                        f"空室状況：{status}\n"
-                        f"通知時刻：{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}\n"
-                        f"予約ページ：{TARGET_URL}"
-                    )
-                    print(msg)
-                    notify_discord(msg)
-                    login_and_reserve(driver)
-                    return  # 1件見つけたら終了
-
-# ✅ メイン処理
-def main():
+def check_calendar_status():
     options = Options()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-    while True:
-        print("空室チェック中…")
-        try:
-            check_rooms(driver)
-        except Exception as e:
-            print(f"エラー発生: {e}")
-        time.sleep(120)
+    url = "https://reserve.tokyodisneyresort.jp/sp/hotel/list/?showWay=&roomsNum=&adultNum=2&childNum=&stayingDays=1&useDate=&cpListStr=&childAgeBedInform=&searchHotelCD=DHM&hotelSearchDetail=true&detailOpenFlg=0&displayType=hotel-search&reservationStatus=1"
+    driver.get(url)
 
+    wait = WebDriverWait(driver, 20)
+    wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, "roomList")))
+
+    rooms = driver.find_elements(By.CLASS_NAME, "roomList")
+    today = datetime.now()
+
+    for room in rooms:
+        try:
+            room_name = room.find_element(By.CLASS_NAME, "roomName").text.strip()
+            if any(room_name == target for target in target_rooms):
+                status_elems = room.find_elements(By.CLASS_NAME, "statusMark")
+                for offset, elem in enumerate(status_elems):
+                    status = elem.text.strip()
+                    if status in ["○", "1", "2", "3"]:
+                        date_str = (today + timedelta(days=offset)).strftime("%Y-%m-%d")
+                        notify_discord(date_str, room_name, status)
+        except Exception as e:
+            print(f"⚠️ 部屋情報の取得失敗: {e}")
+
+    driver.quit()
+
+# ✅ 実行
 if __name__ == "__main__":
-    main()
+    while True:
+        print("▶ ミラコスタ空室チェック開始")
+        try:
+            check_calendar_status()
+        except Exception as e:
+            print(f"❌ 実行時エラー: {e}")
+        time.sleep(120)
 
