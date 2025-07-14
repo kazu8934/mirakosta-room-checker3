@@ -40,7 +40,7 @@ def notify_discord(date, room_name, status):
         f"日付：{date}\n"
         f"部屋タイプ：{room_name}\n"
         f"空室状態：{status}\n\n"
-        f"👉 [予約ページはこちら]({reserve_link})"
+        f"👉 {reserve_link}"  # ← シンプルなURL表示形式で確実にリンク化
     )
 
     requests.post(WEBHOOK_URL, json={"content": message})
@@ -57,7 +57,6 @@ def check_rooms():
         driver.get(LIST_URL)
         time.sleep(5)
 
-        # 待合室なら待つ
         if "ただいまサイトが混雑しております" in driver.page_source:
             print("[待合室] 検出 → 10秒ごとに再チェック")
             time.sleep(10)
@@ -101,4 +100,4 @@ while True:
         check_rooms()
     except Exception as e:
         print(f"[ERROR] メインループ: {e}")
-    time.sleep(120)  
+    time.sleep(120)
