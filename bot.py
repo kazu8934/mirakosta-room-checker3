@@ -53,6 +53,8 @@ def check_rooms():
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--remote-debugging-port=9222')  # ← 重要な追加
+
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
     while True:
@@ -91,13 +93,12 @@ def check_rooms():
                 try:
                     date_text = dates[i].get_text(strip=True)
 
-                    # ✅ 今日より先〜4ヶ月先までの日付のみ通知
+                    # 日付フィルタ
                     target_date = datetime.strptime(date_text, "%Y/%m/%d")
                     today = datetime.today()
                     four_months_later = today + timedelta(days=120)
-
                     if not (today < target_date <= four_months_later):
-                        continue  # 対象外日付ならスキップ
+                        continue
 
                     notify_discord(date_text, room_name, status)
 
