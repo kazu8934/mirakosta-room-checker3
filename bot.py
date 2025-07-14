@@ -1,7 +1,7 @@
 import time
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -37,13 +37,15 @@ def notify_discord(date, room_name, status):
 
     message = (
         f"【ミラコスタ空室検知】\n\n"
-        f"日付：{date}\n"
-        f"部屋タイプ：{room_name}\n"
-        f"空室状態：{status}\n\n"
-        f"👉 {reserve_link}"  # ← シンプルなURL表示形式で確実にリンク化
+        f"Date: {date}\n"
+        f"Room: {room_name}\n"
+        f"Status: {status}\n\n"
+        f"👉 {reserve_link}"
     )
 
     requests.post(WEBHOOK_URL, json={"content": message})
+    print(f"[NOTIFY] {datetime.now()} | {room_name} {date} Status: {status}")
+
 
 # 空室チェック
 def check_rooms():
@@ -58,7 +60,7 @@ def check_rooms():
         time.sleep(5)
 
         if "ただいまサイトが混雑しております" in driver.page_source:
-            print("[待合室] 検出 → 10秒ごとに再チェック")
+            print(f"[WAIT ROOM] {datetime.now()} | Waiting 10 sec...")
             time.sleep(10)
             continue
         else:
@@ -88,16 +90,28 @@ def check_rooms():
             if status in ["○", "1", "2", "3"] or status.startswith("¥"):
                 try:
                     date_text = dates[i].get_text(strip=True)
+
+                    # ✅ 今日より先〜4ヶ月先までの日付のみ通知
+                    target_date = datetime.strptime(date_text, "%Y/%m/%d")
+                    today = datetime.today()
+                    four_months_later = today + timedelta(days=120)
+
+                    if not (today < target_date <= four_months_later):
+                        continue  # 対象外日付ならスキップ
+
                     notify_discord(date_text, room_name, status)
+
                 except IndexError:
                     continue
 
     driver.quit()
 
+
 # メインループ
 while True:
     try:
+        print(f"[CHECK] {datetime.now()} | Start checking rooms...")
         check_rooms()
     except Exception as e:
-        print(f"[ERROR] メインループ: {e}")
+        print(f"[ERROR] {datetime.now()} | Main loop error: {e}")
     time.sleep(120)
