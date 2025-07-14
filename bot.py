@@ -4,10 +4,6 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-import chromedriver_autoinstaller
-
-# ✅ ChromeDriverを自動インストール
-chromedriver_autoinstaller.install()
 
 # ✅ Discord通知用Webhook URL
 WEBHOOK_URL = "https://discord.com/api/webhooks/1390577349489328179/t_7-as4-tdDVt0QddU7g9qVDeZEHY1eWzOcicIX4zWJD0MRtFOIoBL2czjxJFEO_X_Gg"
@@ -15,7 +11,7 @@ WEBHOOK_URL = "https://discord.com/api/webhooks/1390577349489328179/t_7-as4-tdDV
 # ✅ チェック対象URL
 LIST_URL = "https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search"
 
-# ✅ 対象部屋とhotelRoomCdの辞書
+# ✅ 部屋名と部屋コード
 target_rooms = {
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバーグランドビュー": "HODHMTGD0004N",
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバービュー": "HODHMTKD0004N",
@@ -23,7 +19,7 @@ target_rooms = {
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ピアッツァビュー": "HODHMBOQ0004N",
 }
 
-# ✅ Discord通知
+# ✅ Discord通知関数
 def notify_discord(date, room_name, status):
     use_date = datetime.strptime(date, "%Y/%m/%d").strftime("%Y%m%d")
     hotel_room_cd = target_rooms.get(room_name)
@@ -47,15 +43,19 @@ def notify_discord(date, room_name, status):
 
     requests.post(WEBHOOK_URL, json={"content": message})
 
-# ✅ 空室チェック
+
+# ✅ 空室チェック関数
 def check_rooms():
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.binary_location = '/usr/bin/chromium'  # ✅ここが修正ポイント
 
-    driver = webdriver.Chrome(options=options)
+    driver = webdriver.Chrome(
+        executable_path='/usr/bin/chromedriver',  # ←パスは which chromedriver で確認した場所
+        options=options
+    )
+
     driver.get(LIST_URL)
     time.sleep(5)
 
@@ -88,6 +88,7 @@ def check_rooms():
                     continue
 
     driver.quit()
+
 
 # ✅ メインループ
 while True:
