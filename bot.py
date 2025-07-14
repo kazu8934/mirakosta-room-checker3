@@ -1,19 +1,19 @@
 import time
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
-# Webhook URL
+# ✅ Discord通知用Webhook URL（あなたのURL）
 WEBHOOK_URL = "https://discord.com/api/webhooks/1390577349489328179/t_7-as4-tdDVt0QddU7g9qVDeZEHY1eWzOcicIX4zWJD0MRtFOIoBL2czjxJFEO_X_Gg"
 
-# チェック対象URL
+# ✅ チェック対象URL
 LIST_URL = "https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search"
 
-# 対象部屋とhotelRoomCdの辞書
+# ✅ 対象部屋とhotelRoomCdの辞書
 target_rooms = {
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバーグランドビュー": "HODHMTGD0004N",
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバービュー": "HODHMTKD0004N",
@@ -21,7 +21,7 @@ target_rooms = {
     "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ピアッツァビュー": "HODHMBOQ0004N",
 }
 
-# Discord通知
+# ✅ Discord通知
 def notify_discord(date, room_name, status):
     use_date = datetime.strptime(date, "%Y/%m/%d").strftime("%Y%m%d")
     hotel_room_cd = target_rooms.get(room_name)
@@ -37,16 +37,15 @@ def notify_discord(date, room_name, status):
 
     message = (
         f"【ミラコスタ空室検知】\n\n"
-        f"Date: {date}\n"
-        f"Room: {room_name}\n"
-        f"Status: {status}\n\n"
-        f"👉 {reserve_link}"
+        f"日付：{date}\n"
+        f"部屋タイプ：{room_name}\n"
+        f"空室状態：{status}\n\n"
+        f"👉 [予約ページはこちら]({reserve_link})"
     )
 
     requests.post(WEBHOOK_URL, json={"content": message})
-    print(f"[NOTIFY] {datetime.now()} | {room_name} {date} Status: {status}")
 
-# 空室チェック
+# ✅ 空室チェック
 def check_rooms():
     options = Options()
     options.add_argument('--headless')
@@ -56,20 +55,12 @@ def check_rooms():
     options.binary_location = '/usr/bin/chromium-browser'
 
     driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager(version="latest").install()),  # ← ここが重要
+        service=Service(ChromeDriverManager().install()),
         options=options
     )
 
-    while True:
-        driver.get(LIST_URL)
-        time.sleep(5)
-
-        if "ただいまサイトが混雑しております" in driver.page_source:
-            print(f"[WAIT ROOM] {datetime.now()} | Waiting 10 sec...")
-            time.sleep(10)
-            continue
-        else:
-            break
+    driver.get(LIST_URL)
+    time.sleep(5)
 
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     rooms = soup.find_all("div", class_="planListItem")
@@ -95,21 +86,13 @@ def check_rooms():
             if status in ["○", "1", "2", "3"] or status.startswith("¥"):
                 try:
                     date_text = dates[i].get_text(strip=True)
-
-                    target_date = datetime.strptime(date_text, "%Y/%m/%d")
-                    today = datetime.today()
-                    four_months_later = today + timedelta(days=120)
-                    if not (today < target_date <= four_months_later):
-                        continue
-
                     notify_discord(date_text, room_name, status)
-
                 except IndexError:
                     continue
 
     driver.quit()
 
-# メインループ
+# ✅ メインループ
 while True:
     try:
         print(f"[CHECK] {datetime.now()} | Start checking rooms...")
@@ -117,4 +100,3 @@ while True:
     except Exception as e:
         print(f"[ERROR] {datetime.now()} | Main loop error: {e}")
     time.sleep(120)
-
