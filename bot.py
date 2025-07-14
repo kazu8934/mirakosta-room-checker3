@@ -46,14 +46,14 @@ def notify_discord(date, room_name, status):
     requests.post(WEBHOOK_URL, json={"content": message})
     print(f"[NOTIFY] {datetime.now()} | {room_name} {date} Status: {status}")
 
-
 # 空室チェック
 def check_rooms():
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--remote-debugging-port=9222')  # ← 重要な追加
+    options.add_argument('--remote-debugging-port=9222')
+    options.binary_location = '/usr/bin/chromium'  # ★ VPS専用追加
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
@@ -107,7 +107,6 @@ def check_rooms():
 
     driver.quit()
 
-
 # メインループ
 while True:
     try:
@@ -116,3 +115,4 @@ while True:
     except Exception as e:
         print(f"[ERROR] {datetime.now()} | Main loop error: {e}")
     time.sleep(120)
+
