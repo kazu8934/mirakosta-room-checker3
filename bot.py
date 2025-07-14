@@ -4,35 +4,49 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-import chromedriver_autoinstaller  # ✅ 自動インストール用
+import chromedriver_autoinstaller
 
-# ✅ 自動でChromeDriverインストール
+# ✅ ChromeDriverを自動インストール
 chromedriver_autoinstaller.install()
 
-# ✅ Discord通知用Webhook
+# ✅ Discord通知用Webhook URL
 WEBHOOK_URL = "https://discord.com/api/webhooks/1390577349489328179/t_7-as4-tdDVt0QddU7g9qVDeZEHY1eWzOcicIX4zWJD0MRtFOIoBL2czjxJFEO_X_Gg"
 
 # ✅ チェック対象URL
 LIST_URL = "https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search"
 
-# ✅ 対象部屋
-target_rooms = [
-    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバーグランドビュー",
-    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバービュー",
-    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ハーバービュー",
-    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ピアッツァビュー",
-]
+# ✅ 対象部屋とhotelRoomCdの辞書
+target_rooms = {
+    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバーグランドビュー": "HODHMTGD0004N",
+    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド テラスルーム ハーバービュー": "HODHMTKD0004N",
+    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ハーバービュー": "HODHMBKT0004N",
+    "スペチアーレ・ルーム＆スイート ポルト・パラディーゾ・サイド バルコニールーム ピアッツァビュー": "HODHMBOQ0004N",
+}
 
 # ✅ Discord通知
 def notify_discord(date, room_name, status):
+    use_date = datetime.strptime(date, "%Y/%m/%d").strftime("%Y%m%d")
+    hotel_room_cd = target_rooms.get(room_name)
+    if not hotel_room_cd:
+        return
+
+    reserve_link = (
+        f"https://reserve.tokyodisneyresort.jp/hotel/list/?"
+        f"showWay=&roomsNum=1&adultNum=2&childNum=0&stayingDays=1"
+        f"&useDate={use_date}&searchHotelCD=DHM&hotelRoomCd={hotel_room_cd}"
+        f"&displayType=data-hotel&reservationStatus=1"
+    )
+
     message = (
-        f"【ミラコスタ空室検知】\n"
+        f"【ミラコスタ空室検知】\n\n"
         f"日付：{date}\n"
         f"部屋タイプ：{room_name}\n"
-        f"空室状態：{status}\n"
-        f"👉 [予約ページ](https://reserve.tokyodisneyresort.jp/sp/hotel/list/?searchHotelCD=DHM&displayType=hotel-search)"
+        f"空室状態：{status}\n\n"
+        f"👉 [予約ページはこちら]({reserve_link})"
     )
+
     requests.post(WEBHOOK_URL, json={"content": message})
+
 
 # ✅ 空室チェック
 def check_rooms():
@@ -40,11 +54,8 @@ def check_rooms():
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--remote-debugging-port=9222')
-    options.binary_location = '/usr/bin/chromium-browser'
 
     driver = webdriver.Chrome(options=options)
-
     driver.get(LIST_URL)
     time.sleep(5)
 
@@ -55,8 +66,8 @@ def check_rooms():
         name_tag = room.find("div", class_="roomType")
         if not name_tag:
             continue
-
         room_name = name_tag.get_text(strip=True)
+
         if room_name not in target_rooms:
             continue
 
@@ -78,6 +89,7 @@ def check_rooms():
 
     driver.quit()
 
+
 # ✅ メインループ
 while True:
     try:
@@ -85,5 +97,4 @@ while True:
         check_rooms()
     except Exception as e:
         print(f"[ERROR] {datetime.now()} | Main loop error: {e}")
-
     time.sleep(120)
