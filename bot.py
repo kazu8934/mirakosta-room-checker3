@@ -53,7 +53,7 @@ def check_rooms():
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--remote-debugging-port=9222')
-    options.binary_location = '/usr/bin/chromium'  # VPS用に追加
+    options.binary_location = '/usr/bin/chromium-browser'  # ← ここがVPS専用
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
