@@ -47,13 +47,13 @@ def notify_discord(date, room_name, status):
 
     requests.post(WEBHOOK_URL, json={"content": message})
 
-
 # ✅ 空室チェック
 def check_rooms():
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.binary_location = '/usr/bin/chromium'  # ✅ここが修正ポイント
 
     driver = webdriver.Chrome(options=options)
     driver.get(LIST_URL)
@@ -88,7 +88,6 @@ def check_rooms():
                     continue
 
     driver.quit()
-
 
 # ✅ メインループ
 while True:
